@@ -28,7 +28,7 @@ setup(
     python_requires='>=3.6',
     classifiers=[
       # Full list: https://pypi.org/pypi?%3Aaction=list_classifiers
-      'Development Status :: 1 - Planning',
+      'Development Status :: 2 - Pre-Alpha',
       'Intended Audience :: Developers',
       'Topic :: Office/Business :: Financial :: Investment',
       'License :: OSI Approved :: MIT License',
