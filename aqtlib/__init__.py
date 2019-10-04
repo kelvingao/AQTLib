@@ -1,3 +1,4 @@
+# flake8: noqa
 #!/usr/bin/env python3
 #
 # MIT License
@@ -25,13 +26,16 @@
 
 import sys
 
-from .version import __version__, __version_info__
-
 # check min, python version
 if sys.version_info < (3, 6, 0):
     raise RuntimeError('AQTLib requires Python 3.6 or higher')
 
-__all__ = [
-    'store',
-    'util',
-]
+from .version import __version__, __version_info__
+
+from .objects import Object
+from .pg import PG
+from .store import Store
+
+__all__ = ['util', 'schema']
+
+del sys

@@ -1,1 +1,2 @@
 ib_insync>=0.9.56
+asyncpg>=0.18.3

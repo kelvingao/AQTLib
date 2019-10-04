@@ -23,7 +23,15 @@
 # SOFTWARE.
 #
 
+import asyncio
 import logging
+
+import eventkit as ev
+
+globalErrorEvent = ev.Event()
+"""
+Event to emit global exceptions.
+"""
 
 
 def createLogger(name, level=logging.DEBUG):
@@ -49,3 +57,49 @@ def createLogger(name, level=logging.DEBUG):
     logger.propagate = False
 
     return logger
+
+
+def run(*awaitables, timeout: float = None):
+    """
+    By default run the event loop forever.
+
+    When awaitables (like Tasks, Futures or coroutines) are given then
+    run the event loop until each has completed and return their results.
+
+    An optional timeout (in seconds) can be given that will raise
+    asyncio.TimeoutError if the awaitables are not ready within the
+    timeout period.
+    """
+    loop = asyncio.get_event_loop()
+    if not awaitables:
+        if loop.is_running():
+            return
+        loop.run_forever()
+        f = asyncio.gather(*asyncio.Task.all_tasks())
+        f.cancel()
+        result = None
+        try:
+            loop.run_until_complete(f)
+        except asyncio.CancelledError:
+            pass
+    else:
+        if len(awaitables) == 1:
+            future = awaitables[0]
+        else:
+            future = asyncio.gather(*awaitables)
+        if timeout:
+            future = asyncio.wait_for(future, timeout)
+        task = asyncio.ensure_future(future)
+
+        def onError(_):
+            task.cancel()
+
+        globalErrorEvent.connect(onError)
+        try:
+            result = loop.run_until_complete(task)
+        except asyncio.CancelledError as e:
+            raise globalErrorEvent.value() or e
+        finally:
+            globalErrorEvent.disconnect(onError)
+
+    return result
