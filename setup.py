@@ -38,5 +38,5 @@ setup(
     platforms=['any'],
     keywords='aqtlib algo trading interactive brokers tws asyncio',
     packages=['aqtlib'],
-    install_requires=['ib_insync>=0.9.56'],
+    install_requires=['ib_insync', 'asyncpg'],
 )
