@@ -1,4 +1,3 @@
-# flake8: noqa
 #!/usr/bin/env python3
 #
 # MIT License
@@ -24,20 +23,46 @@
 # SOFTWARE.
 #
 
-import sys
+__all__ = ['Instrument']
 
-# check min, python version
-if sys.version_info < (3, 6, 0):
-    raise RuntimeError('AQTLib requires Python 3.6 or higher')
 
-from .version import __version__, __version_info__
+class Instrument(str):
+    """
+    A string subclass that provides easy access to misc
+    symbol-related methods and information.
 
-from .objects import Object
-from .pg import PG
-from .garner import Garner
-from .algo import Algo
-from .instrument import Instrument
+    """
+    strategy = None
 
-__all__ = ['util', 'schema']
+    # ---------------------------------------
+    def _bind_strategy(self, strategy):
+        """
+        Sets the strategy object to communicate with.
 
-del sys
+        """
+        self.strategy = strategy
+
+    # ---------------------------------------
+    def get_bars(self, lookback=None, as_dict=False):
+        """
+        Get bars for this instrument and return as a dataframe or dict.
+
+        Args:
+            lookback : int
+                Max number of bars to get (None = all available bars)
+            as_dict : bool
+                Return a dict or a pd.DataFrame object
+
+        """
+        bars = self.strategy.bars
+
+        lookback = self.strategy.bars_window if lookback is None else lookback
+        bars = bars[-lookback:]
+
+        if as_dict:
+            bars.reset_index(inplace=True)
+            bars = bars.to_dict(orient='records')
+            if lookback == 1:
+                bars = None if not bars else bars[0]
+
+        return bars

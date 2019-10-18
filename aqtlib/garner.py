@@ -28,6 +28,9 @@ import asyncio
 import argparse
 import logging
 
+import pandas as pd
+import numpy as np
+
 from sqlalchemy.engine.url import URL
 
 from typing import List, Awaitable
@@ -39,20 +42,41 @@ from ib_insync import IB, Forex
 # configure logging
 util.createLogger(__name__, logging.DEBUG)
 
-__all__ = ['Store']
+__all__ = ['Garner']
 
 
-class Store(Object):
-    """Store class initilizer
+class Garner(Object):
+    """Garner class initilizer
 
+    Args:
+        symbols : str
+            IB contracts CSV database (default: ./symbols.csv)
+        ib_port : int
+            TWS/GW Port to use (default: 4002)
+        ib_client : int
+            TWS/GW Client ID (default: 100)
+        ib_server : str
+            IB TWS/GW Server hostname (default: localhost)
+        db_host : str
+            PostgreSQL server hostname (default: localhost)
+        db_port : str
+            PostgreSQL server port (default: 3306)
+        db_name : str
+            PostgreSQL server database (default: aqtlib_db)
+        db_user : str
+            PostgreSQL server username (default: aqtlib_user)
+        db_pass : str
+            PostgreSQL server password (default: aqtlib_pass)
+        db_skip : str
+            Skip PostgreSQL logging (default: False)
     """
 
     RequestTimeout = 0
 
     defaults = dict(
         symbols='sybmols.csv',
-        ib_port=4001,  # 7496/7497 = TWS, 4001/4002 = IBGateway
-        ib_client=308,
+        ib_port=4002,  # 7496/7497 = TWS, 4001/4002 = IBGateway
+        ib_client=100,
         ib_server='localhost',
         db_host='localhost',
         db_port=5432,
@@ -73,7 +97,14 @@ class Store(Object):
         self.update(**self.load_cli_args())
 
         # PostgreSQL manager
-        self.pg = PG()
+        settings = dict(
+            drivername='postgres',
+            database=self.db_name,
+            username=self.db_user,
+            password=self.db_pass,
+            host=self.db_host
+        )
+        self.pg = PG(str(URL(**settings)), metadata)
 
         # sync/async framework for Interactive Brokers
         self.ib = IB()
@@ -87,8 +118,8 @@ class Store(Object):
     def onPendingTickers(self, tickers):
         """
         Handling and recording tickers form Interactive Brokers.
-        """
 
+        """
         # do not act on first incorrect tick
         if self.first_tick:
             self.first_tick = False
@@ -107,7 +138,7 @@ class Store(Object):
     # -------------------------------------------
     def load_cli_args(self):
         parser = argparse.ArgumentParser(
-            description='AQTLib Store',
+            description='AQTLib Garner',
             formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
         parser.add_argument('--ib_port', default=self.ib_port,
@@ -144,19 +175,17 @@ class Store(Object):
         return util.run(*awaitables, timeout=self.RequestTimeout)
 
     def run(self):
+        """Starts the garner
 
+        Connects to the TWS/GW, processes and logs market data.
+
+        """
         # initilize and create PostgreSQL schema tables
         self._logger.info("Initialize PostgreSQL...")
-        self.pg.init(str(URL(
-                    drivername='postgres',
-                    database=self.db_name,
-                    username=self.db_user,
-                    password=self.db_pass,
-                    host=self.db_host)
-                ), metadata)
+        self._run(self.pg.init_pool())
 
         # connect to Interactive Brokers
-        # FIXME: if there is no ibgateway, try reconnecting
+        # FIXME: if disconnect, try reconnecting
         self._logger.info("Connecting to Interactive Brokers...")
         self.ib.connect(
             self.ib_server, self.ib_port, self.ib_client)
@@ -171,8 +200,90 @@ class Store(Object):
         except (KeyboardInterrupt, SystemExit):
             self.quitting = True  # don't display connection errors on ctrl+c
             print(
-                "\n\n>>> Interrupted with Ctrl-c...\n(waiting for running tasks to be completed)\n")
+                "\n\n>>> Interrupted with Ctrl-c...\n\n")
             # FIXME: quit gracefully
             sys.exit(1)
 
         self._loop.run_forever()
+
+    # ---------------------------------------------
+    @staticmethod
+    def validate_csv(df: pd.DataFrame, kind: str = "BAR") -> bool:
+        """
+        Check if a AQTLib-compatible CSV file.
+
+        """
+        _BARS_COLS = ('asset_class', 'open', 'high', 'low', 'close', 'volume')
+
+        for el in _BARS_COLS:
+            if el not in df.columns:
+                raise ValueError('Column {el} not found'.format(el=el))
+                return False
+
+        return True
+
+    # -------------------------------------------
+    @staticmethod
+    def prepare_bars_history(df, resolution="1T", start=None, end=None, tz="UTC"):
+
+        # setup dataframe
+        df.set_index('datetime', inplace=True)
+        df.index = pd.to_datetime(df.index, utc=True)
+
+        # meta data
+        meta_data = df.groupby(["symbol"])[
+            ['symbol', 'symbol_group', 'asset_class']].last()
+
+        combined = []
+
+        bars_ohlc_dict = {
+            'open':           'first',
+            'high':           'max',
+            'low':            'min',
+            'close':          'last',
+            'volume':         'sum'
+        }
+
+        for symbol in meta_data.index.values:
+            bar_dict = {}
+
+            for col in df[df['symbol'] == symbol].columns:
+                if col in bars_ohlc_dict.keys():
+                    bar_dict[col] = bars_ohlc_dict[col]
+
+            resampled = df[df['symbol'] == symbol].resample(
+                        resolution).apply(bar_dict).fillna(value=np.nan)
+
+            resampled['symbol'] = symbol
+            resampled['symbol_group'] = meta_data[meta_data.index == symbol]['symbol_group'].values[0]
+            resampled['asset_class'] = meta_data[meta_data.index == symbol]['asset_class'].values[0]
+
+            combined.append(resampled)
+
+        data = pd.concat(combined, sort=True)
+        data['volume'] = data['volume'].astype(int)
+
+        # convert timezone
+        if tz:
+            data.index = data.index.tz_convert(tz)
+
+        return data
+
+    # -------------------------------------------
+    @staticmethod
+    def drip(history, handler):
+        """
+        Replaying history data, and handling each record.
+
+        """
+        try:
+            for i in range(len(history)):
+                handler(history.iloc[i:i + 1])
+
+            print("\n\n>>> Backtesting Completed.")
+
+        except (KeyboardInterrupt, SystemExit):
+            print(
+                "\n\n>>> Interrupted with Ctrl-c...\n\n")
+            print(".\n.\n.\n")
+            sys.exit(1)
