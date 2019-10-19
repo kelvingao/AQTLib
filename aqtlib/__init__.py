@@ -39,5 +39,8 @@ from .algo import Algo
 from .instrument import Instrument
 
 __all__ = ['util', 'schema']
+for _m in (
+        objects, pg, garner, algo, instrument):
+    __all__ += _m.__all__
 
 del sys

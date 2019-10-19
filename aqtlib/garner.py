@@ -271,6 +271,43 @@ class Garner(Object):
 
     # -------------------------------------------
     @staticmethod
+    def prepare_data(instrument, df, output_path=None, kind="BAR"):
+        """
+        Converts given DataFrame to a AQTLib-compatible format csv file.
+
+        """
+        df = df.copy()
+
+        # adjust all columns
+        ratio = df["Close"] / df["Adj Close"]
+        df["close"] = df["Adj Close"]
+        df["open"] = df["Open"] / ratio
+        df["high"] = df["High"] / ratio
+        df["low"] = df["Low"] / ratio
+        df["volume"] = df["Volume"]
+        df = df[['open', 'high', 'low', 'close', 'volume']]
+
+        df.index.names = ['datetime']
+        df.index = pd.to_datetime(df.index, utc=True)
+
+        symbol = instrument[0] + '_' + instrument[1]
+        symbol_group = instrument[0]
+        asset_class = instrument[1]
+
+        df.loc[:, 'symbol'] = symbol
+        df.loc[:, 'symbol_group'] = symbol_group
+        df.loc[:, 'asset_class'] = asset_class
+
+        # save csv
+        if output_path is not None:
+            output_path = output_path[:-1] if output_path.endswith('/') else output_path
+            df.to_csv("{path}/{symbol}.{kind}.csv".format(
+                path=output_path, symbol=symbol, kind=kind))
+
+        return df
+
+    # -------------------------------------------
+    @staticmethod
     def drip(history, handler):
         """
         Replaying history data, and handling each record.
