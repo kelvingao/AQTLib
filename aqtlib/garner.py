@@ -251,8 +251,10 @@ class Garner(Object):
                 if col in bars_ohlc_dict.keys():
                     bar_dict[col] = bars_ohlc_dict[col]
 
-            resampled = df[df['symbol'] == symbol].resample(
-                        resolution).apply(bar_dict).fillna(value=np.nan)
+            resampled = df[df['symbol'] == symbol].resample(resolution).apply(bar_dict)
+
+            # drop NANs
+            resampled.dropna(inplace=True)
 
             resampled['symbol'] = symbol
             resampled['symbol_group'] = meta_data[meta_data.index == symbol]['symbol_group'].values[0]

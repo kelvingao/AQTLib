@@ -35,8 +35,6 @@ from abc import abstractmethod
 from .instrument import Instrument
 
 
-util.createLogger(__name__, level=logging.INFO)
-
 __all__ = ['Algo']
 
 
@@ -84,7 +82,8 @@ class Algo(Object):
         self.name = self.__class__.__name__
 
         # initilize strategy logger
-        self._logger = logging.getLogger(__name__)
+        util.createLogger(self.name, level=logging.INFO)
+        self.logger = logging.getLogger(self.name)
 
         # override args with (non-default) command-line args
         self.update(**self.load_cli_args())
@@ -94,19 +93,19 @@ class Algo(Object):
             self._check_backtest_args()
 
         self.instruments = instruments
-        self.symbols = list([x[0] for x in self.instruments])
+        self.symbols = list([i[0] + '_' + i[1] for i in self.instruments])
 
         self.bars = pd.DataFrame()
 
     # ---------------------------------------
     def _check_backtest_args(self):
         if self.output is None:
-            self._logger.error(
+            self.logger.error(
                 "Must provide an output file for Backtest mode")
             sys.exit(0)
 
         if self.start is None:
-            self._logger.error(
+            self.logger.error(
                 "Must provide start date for Backtest mode")
             sys.exit(0)
 
@@ -114,7 +113,7 @@ class Algo(Object):
             self.end = datetime.now()
         if self.data is not None:
             if not os.path.exists(self.data):
-                self._logger.error(
+                self.logger.error(
                     "CSV directory cannot be found ({dir})".format(dir=self.data))
                 sys.exit(0)
             elif self.data.endswith("/"):
@@ -187,25 +186,25 @@ class Algo(Object):
         for symbol in self.symbols:
             file = "{data}/{symbol}.{kind}.csv".format(data=self.data, symbol=symbol, kind="BAR")
             if not os.path.exists(file):
-                self._logger.error(
+                self.logger.error(
                     "Can't load data for {symbol} ({file} doesn't exist)".format(
                         symbol=symbol, file=file))
                 sys.exit(0)
             try:
                 df = pd.read_csv(file)
                 if not Garner.validate_csv(df, "BAR"):
-                    self._logger.error("{file} isn't a AQTLib-compatible format".format(file=file))
+                    self.logger.error("{file} isn't a AQTLib-compatible format".format(file=file))
                     sys.exit(0)
 
                 if df['symbol'].values[-1] != symbol:
-                    self._logger.error(
+                    self.logger.error(
                         "{file} doesn't content data for {symbol}".format(file=file, symbol=symbol))
                     sys.exit(0)
 
                 dfs.append(df)
 
             except Exception as e:
-                self._logger.error(
+                self.logger.error(
                     "Error reading data for {symbol} ({errmsg})", symbol=symbol, errmsg=e)
                 sys.exit(0)
         return dfs
