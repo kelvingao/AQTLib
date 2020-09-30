@@ -223,6 +223,63 @@ class Garner(Object):
 
     # -------------------------------------------
     @staticmethod
+    def prepare_data(instrument, data, output_path=None,
+                 index=None, colsmap=None, kind="BAR", resample="1T") -> pd.DataFrame:
+        """
+        Converts given DataFrame to a AQTLib-compatible format csv file.
+
+        :Parameters:
+            instrument : mixed
+                IB contract tuple / string (same as that given to strategy)
+            data : pd.DataFrame
+                Pandas DataDrame with that instrument's market data
+            output_path : str
+                Path to where the resulting CSV should be saved (optional)
+            index : pd.Series
+                Pandas Series that will be used for df's index (optioanl)
+            colsmap : dict
+                Dict for mapping df's columns to those used by AQTLib
+                (default assumes same naming convention as AQTLib's)
+            kind : str
+                Is this ``BAR`` or ``TICK`` data
+            resample : str
+                Pandas resolution (defaults to 1min/1T)
+        :Returns:
+            data : pd.DataFrame
+                Pandas DataFrame in a AQTLib-compatible format and timezone
+
+        """
+
+        df = data.copy()
+
+        # jquant's csv?
+        if set(df.columns) == set(['close', 'open', 'high', 'low', 'volume', 'money']):
+            df.index = df.index.tz_localize('Asia/Shanghai')
+
+        # FIXME: generate a valid ib tuple
+        symbol = instrument[0] + '_' + instrument[1]
+        symbol_group = instrument[0]
+        asset_class = instrument[1]
+
+        df.loc[:, 'symbol'] = symbol
+        df.loc[:, 'symbol_group'] = symbol_group
+        df.loc[:, 'asset_class'] = asset_class
+
+        # TODO: validate, remove and map columns
+
+        df.index.rename("datetime", inplace=True)
+
+        # save csv
+        if output_path is not None:
+            output_path = os.path.expanduser(output_path)
+            output_path = output_path[:-1] if output_path.endswith('/') else output_path
+            df.to_csv("{path}/{symbol}.{kind}.csv".format(
+                path=output_path, symbol=symbol, kind=kind))
+
+        return df
+
+    # -------------------------------------------
+    @staticmethod
     def prepare_bars_history(df, resolution="1T", start=None, end=None, tz="UTC"):
 
         # setup dataframe
@@ -269,43 +326,6 @@ class Garner(Object):
             data.index = data.index.tz_convert(tz)
 
         return data
-
-    # -------------------------------------------
-    @staticmethod
-    def prepare_data(instrument, df, output_path=None, kind="BAR"):
-        """
-        Converts given DataFrame to a AQTLib-compatible format csv file.
-
-        """
-        df = df.copy()
-
-        # adjust all columns
-        ratio = df["Close"] / df["Adj Close"]
-        df["close"] = df["Adj Close"]
-        df["open"] = df["Open"] / ratio
-        df["high"] = df["High"] / ratio
-        df["low"] = df["Low"] / ratio
-        df["volume"] = df["Volume"]
-        df = df[['open', 'high', 'low', 'close', 'volume']]
-
-        df.index.names = ['datetime']
-        df.index = pd.to_datetime(df.index, utc=True)
-
-        symbol = instrument[0] + '_' + instrument[1]
-        symbol_group = instrument[0]
-        asset_class = instrument[1]
-
-        df.loc[:, 'symbol'] = symbol
-        df.loc[:, 'symbol_group'] = symbol_group
-        df.loc[:, 'asset_class'] = asset_class
-
-        # save csv
-        if output_path is not None:
-            output_path = output_path[:-1] if output_path.endswith('/') else output_path
-            df.to_csv("{path}/{symbol}.{kind}.csv".format(
-                path=output_path, symbol=symbol, kind=kind))
-
-        return df
 
     # -------------------------------------------
     @staticmethod
