@@ -25,6 +25,7 @@
 
 import asyncio
 import logging
+import colorlog
 
 import eventkit as ev
 
@@ -32,31 +33,6 @@ globalErrorEvent = ev.Event()
 """
 Event to emit global exceptions.
 """
-
-
-def createLogger(name, level=logging.DEBUG):
-    """
-    DEBUG:    Detialed information, typically of interest of only when diagnosing problems.
-    INFO:     Confirmation that things are working as expected.
-    WARNING:  An indicaiton that something unexpected happened, or indicative of some problem in the near future
-            (e.g. 'disk space low'). The software is still working as expected.
-    ERROR:    Due to a more serious problem, the software has not been able to perform some function.
-    CRITICAL: A serious error, indicating that the program itself may be unable to continue running.
-
-    Return a logger with the given `name` and optional `level`
-    """
-
-    logger = logging.getLogger(name)
-    logger.setLevel(level)
-
-    handler = logging.StreamHandler()
-    # https://docs.python.org/3/library/logging.html#logrecord-attributes
-    handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s'))
-
-    logger.addHandler(handler)
-    logger.propagate = False
-
-    return logger
 
 
 def run(*awaitables, timeout: float = None):
@@ -103,3 +79,16 @@ def run(*awaitables, timeout: float = None):
             globalErrorEvent.disconnect(onError)
 
     return result
+
+def logToConsole(level=logging.INFO):
+    """Create a log handler that logs to the console."""
+    logger = logging.getLogger()
+    logger.setLevel(level)
+    formatter = logging.Formatter(
+        '%(asctime)s %(name)s %(levelname)s %(message)s')
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
+    logger.handlers = [
+        h for h in logger.handlers
+        if type(h) is not logging.StreamHandler]
+    logger.addHandler(handler)

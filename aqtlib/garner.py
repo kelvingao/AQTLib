@@ -23,6 +23,7 @@
 # SOFTWARE.
 #
 
+import os
 import sys
 import asyncio
 import argparse
@@ -39,8 +40,6 @@ from aqtlib.schema import metadata, ticks
 
 from ib_insync import IB, Forex
 
-# configure logging
-util.createLogger(__name__, logging.DEBUG)
 
 __all__ = ['Garner']
 

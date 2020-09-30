@@ -31,7 +31,6 @@ from sqlalchemy import MetaData, DateTime, create_engine
 from sqlalchemy.sql.sqltypes import String
 from sqlalchemy.dialects.postgresql import dialect as PostgresqlDialect
 
-util.createLogger(__name__, logging.INFO)
 
 __all__ = ['PG']
 
