@@ -65,14 +65,14 @@ class Algo(Object):
     """
 
     defaults = dict(
-        resolution="1T",
+        resolution="1D",
         bars_window=120,
-        timezone='UTC',
+        timezone='Asia/Shanghai',
         backtest=False,
         start=None,
         end=None,
-        data=None,
-        output=None
+        data='~/_shared_resources/data/',
+        output='~/_shared_resources/backtest/'
     )
 
     def __init__(self, instruments, *args, **kwargs):
@@ -110,7 +110,9 @@ class Algo(Object):
 
         if self.end is None:
             self.end = datetime.now()
+
         if self.data is not None:
+            self.data = os.path.expanduser(self.data)
             if not os.path.exists(self.data):
                 self._logger.error(
                     "CSV directory cannot be found ({dir})".format(dir=self.data))
@@ -166,9 +168,13 @@ class Algo(Object):
                 dfs = self._get_history()
 
                 # prepare history data
-                params = (
-                    pd.concat(dfs, sort=True), self.resolution, self.start, self.end, self.timezone)
-                history = Garner.prepare_bars_history(*params)
+                history = Garner.prepare_bars_history(
+                    data=pd.concat(dfs, sort=True),
+                    resolution=self.resolution,
+                    tz=self.timezone
+                )
+
+                history = history[history.index >= self.start]
 
             # initiate strategy
             self.on_start()

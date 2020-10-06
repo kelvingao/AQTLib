@@ -41,6 +41,23 @@ Event to emit global exceptions.
 """
 
 
+def get_timezone(as_timedelta=False):
+    """ utility to get the machine's timezone """
+    try:
+        offset_hour = -(time.altzone if time.daylight else time.timezone)
+    except Exception as e:
+        offset_hour = -(datetime.datetime.now() -
+                        datetime.datetime.utcnow()).seconds
+
+    offset_hour = offset_hour // 3600
+    offset_hour = offset_hour if offset_hour < 10 else offset_hour // 10
+
+    if as_timedelta:
+        return datetime.timedelta(hours=offset_hour)
+
+    return 'Etc/GMT%+d' % -offset_hour
+
+
 def run(*awaitables, timeout: float = None):
     """
     By default run the event loop forever.

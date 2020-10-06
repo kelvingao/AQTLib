@@ -254,7 +254,7 @@ class Garner(Object):
 
         # jquant's csv?
         if set(df.columns) == set(['close', 'open', 'high', 'low', 'volume', 'money']):
-            df.index = df.index.tz_localize('Asia/Shanghai')
+            df.index = df.index.tz_localize(util.get_timezone()).tz_convert('UTC')
 
         # FIXME: generate a valid ib tuple
         symbol = instrument[0] + '_' + instrument[1]
@@ -280,14 +280,14 @@ class Garner(Object):
 
     # -------------------------------------------
     @staticmethod
-    def prepare_bars_history(df, resolution="1T", start=None, end=None, tz="UTC"):
+    def prepare_bars_history(data, resolution="1T", tz=None):
 
         # setup dataframe
-        df.set_index('datetime', inplace=True)
-        df.index = pd.to_datetime(df.index, utc=True)
+        data.set_index('datetime', inplace=True)
+        data.index = pd.to_datetime(data.index, utc=True)
 
         # meta data
-        meta_data = df.groupby(["symbol"])[
+        meta_data = data.groupby(["symbol"])[
             ['symbol', 'symbol_group', 'asset_class']].last()
 
         combined = []
@@ -303,11 +303,15 @@ class Garner(Object):
         for symbol in meta_data.index.values:
             bar_dict = {}
 
-            for col in df[df['symbol'] == symbol].columns:
+            for col in data[data['symbol'] == symbol].columns:
                 if col in bars_ohlc_dict.keys():
                     bar_dict[col] = bars_ohlc_dict[col]
 
-            resampled = df[df['symbol'] == symbol].resample(resolution).apply(bar_dict)
+            # convert timezone
+            if tz:
+                data.index = data.index.tz_convert(tz)
+
+            resampled = data[data['symbol'] == symbol].resample(resolution).apply(bar_dict)
 
             # drop NANs
             resampled.dropna(inplace=True)
@@ -320,10 +324,6 @@ class Garner(Object):
 
         data = pd.concat(combined, sort=True)
         data['volume'] = data['volume'].astype(int)
-
-        # convert timezone
-        if tz:
-            data.index = data.index.tz_convert(tz)
 
         return data
 
