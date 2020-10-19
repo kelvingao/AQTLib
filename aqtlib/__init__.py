@@ -34,13 +34,15 @@ from .version import __version__, __version_info__
 
 from .objects import Object
 from .pg import PG
-from .garner import Garner
+from .porter import Porter
+from .broker import Broker
 from .algo import Algo
 from .instrument import Instrument
 
+
 __all__ = ['util', 'schema']
 for _m in (
-        objects, pg, garner, algo, instrument):
+        objects, pg, porter, algo, instrument, broker):
     __all__ += _m.__all__
 
 del sys
