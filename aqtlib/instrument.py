@@ -23,6 +23,8 @@
 # SOFTWARE.
 #
 
+import logging
+
 __all__ = ['Instrument']
 
 
@@ -33,9 +35,10 @@ class Instrument(str):
 
     """
     strategy = None
+    _logger = logging.getLogger(__name__)
 
     # ---------------------------------------
-    def _bind_strategy(self, strategy):
+    def attach_strategy(self, strategy):
         """
         Sets the strategy object to communicate with.
 
@@ -65,4 +68,77 @@ class Instrument(str):
             if lookback == 1:
                 bars = None if not bars else bars[0]
 
-        return bars
+        return bars.copy()
+
+    # ---------------------------------------
+    def get_positions(self, attr=None):
+        """Get the positions data for the instrument
+        :Optional:
+            attr : string
+                Position attribute to get
+                (optional attributes: symbol, position, avgCost, account)
+        :Retruns:
+            positions : dict (positions) / float/str (attribute)
+                positions data for the instrument
+        """
+        pos = self.strategy.get_positions(self)
+
+        try:
+            if attr is not None:
+                attr = attr.replace("quantity", "position")
+            return pos[attr]
+        except Exception as e:
+            return pos
+
+    # ---------------------------------------
+    def buy(self, quantity, **kwargs):
+        """ Shortcut for ``instrument.order("BUY", ...)`` and accepts all of its
+        `optional parameters <#qtpylib.instrument.Instrument.order>`_
+        :Parameters:
+            quantity : int
+                Order quantity
+        """
+        self.strategy.order("BUY", self, quantity=quantity, **kwargs)
+
+    # ---------------------------------------
+    def exit(self):
+        """ Shortcut for ``instrument.order("EXIT", ...)``
+        (accepts no parameters)"""
+        self.strategy.order("EXIT", self)
+
+    # ---------------------------------------
+    def order(self, direction, quantity, **kwargs):
+        """ Send an order for this instrument
+        :Parameters:
+            direction : string
+                Order Type (BUY/SELL, EXIT/FLATTEN)
+            quantity : int
+                Order quantity
+        :Optional:
+            limit_price : float
+                In case of a LIMIT order, this is the LIMIT PRICE
+            expiry : int
+                Cancel this order if not filled after *n* seconds (default 60 seconds)
+            order_type : string
+                Type of order: Market (default), LIMIT (default when limit_price is passed),
+                MODIFY (required passing or orderId)
+            orderId : int
+                If modifying an order, the order id of the modified order
+            target : float
+                target (exit) price
+            initial_stop : float
+                price to set hard stop
+            stop_limit: bool
+                Flag to indicate if the stop should be STOP or STOP LIMIT (default False=STOP)
+            trail_stop_at : float
+                price at which to start trailing the stop
+            trail_stop_by : float
+                % of trailing stop distance from current price
+            fillorkill: bool
+                fill entire quantiry or none at all
+            iceberg: bool
+                is this an iceberg (hidden) order
+            tif: str
+                time in force (DAY, GTC, IOC, GTD). default is ``DAY``
+        """
+        self.strategy.order(direction.upper(), self, quantity, **kwargs)
