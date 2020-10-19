@@ -30,7 +30,8 @@ import argparse
 import pandas as pd
 
 from datetime import datetime
-from aqtlib import util, Object, Garner
+from aqtlib import util, Broker, Porter
+from aqtlib.objects import DataStore
 from abc import abstractmethod
 from .instrument import Instrument
 
@@ -38,7 +39,7 @@ from .instrument import Instrument
 __all__ = ['Algo']
 
 
-class Algo(Object):
+class Algo(Broker):
     """Algo class initilizer.
 
     Args:
@@ -67,16 +68,16 @@ class Algo(Object):
     defaults = dict(
         resolution="1D",
         bars_window=120,
-        timezone='Asia/Shanghai',
+        timezone='UTC',
         backtest=False,
         start=None,
         end=None,
-        data='~/_shared_resources/data/',
-        output='~/_shared_resources/backtest/'
+        data=None,
+        output=None
     )
 
     def __init__(self, instruments, *args, **kwargs):
-        Object.__init__(self, *args, **kwargs)
+        super(Algo, self).__init__(instruments, *args, **kwargs)
 
         # strategy name
         self.name = self.__class__.__name__
@@ -87,14 +88,25 @@ class Algo(Object):
         # override args with (non-default) command-line args
         self.update(**self.load_cli_args())
 
+        self.backtest_csv = self.data
+
         # sanity checks for backtesting mode
         if self.backtest:
             self._check_backtest_args()
 
-        self.instruments = instruments
-        self.symbols = list([i[0] + '_' + i[1] for i in self.instruments])
+        # initilize output file
+        self.record_ts = None
+        if self.output:
+            self.datastore = DataStore(self.output)
 
         self.bars = pd.DataFrame()
+        self.bar_hashes = {}
+
+        # -----------------------------------
+        # signal collector
+        self.signals = {}
+        for sym in self.symbols:
+            self.signals[sym] = pd.DataFrame()
 
     # ---------------------------------------
     def _check_backtest_args(self):
@@ -109,16 +121,16 @@ class Algo(Object):
             sys.exit(0)
 
         if self.end is None:
-            self.end = datetime.now()
+            self.end = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-        if self.data is not None:
-            self.data = os.path.expanduser(self.data)
-            if not os.path.exists(self.data):
+        if self.backtest_csv is not None:
+            self.backtest_csv = os.path.expanduser(self.backtest_csv)
+            if not os.path.exists(self.backtest_csv):
                 self._logger.error(
-                    "CSV directory cannot be found ({dir})".format(dir=self.data))
+                    "CSV directory cannot be found ({dir})".format(dir=self.backtest_csv))
                 sys.exit(0)
-            elif self.data.endswith("/"):
-                self.data = self.data[:-1]
+            elif self.backtest_csv.endswith("/"):
+                self.backtest_csv = self.backtest_csv[:-1]
 
     # ---------------------------------------
     def load_cli_args(self):
@@ -132,16 +144,16 @@ class Algo(Object):
             description='AQTLib Algorithm',
             formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-        parser.add_argument('--backtest', default=self.backtest,
+        parser.add_argument('--backtest', default=self.defaults['backtest'],
                             help='Work in Backtest mode (flag)',
                             action='store_true')
-        parser.add_argument('--start', default=self.start,
+        parser.add_argument('--start', default=self.defaults['start'],
                             help='Backtest start date')
-        parser.add_argument('--end', default=self.end,
+        parser.add_argument('--end', default=self.defaults['end'],
                             help='Backtest end date')
-        parser.add_argument('--data', default=self.data,
+        parser.add_argument('--data', default=self.defaults['data'],
                             help='Path to backtester CSV files')
-        parser.add_argument('--output', default=self.output,
+        parser.add_argument('--output', default=self.defaults['output'],
                             help='Path to save the recorded data')
 
         # only return non-default cmd line args
@@ -155,7 +167,7 @@ class Algo(Object):
     def run(self):
         """Starts the algo
 
-        Connects to the Garner, processes data and passes
+        Connects to the Porter, processes data and passes
         bar data to the ``on_bar`` function.
 
         """
@@ -164,33 +176,43 @@ class Algo(Object):
         if self.backtest:
             self._logger.info('Algo start backtesting...')
             # get history from csv dir
-            if self.data:
-                dfs = self._get_history()
+            if self.backtest_csv:
+                dfs = self._fetch_csv()
 
                 # prepare history data
-                history = Garner.prepare_bars_history(
+                history = Porter.prepare_bars_history(
                     data=pd.concat(dfs, sort=True),
                     resolution=self.resolution,
                     tz=self.timezone
                 )
 
-                history = history[history.index >= self.start]
+                history = history[(history.index >= self.start) & (history.index <= self.end)]
+
+            else:
+                # TODO - history from porter
+                pass
+
+            # optimize pandas
+            if not history.empty:
+                history['symbol'] = history['symbol'].astype('category')
+                history['symbol_group'] = history['symbol_group'].astype('category')
+                history['asset_class'] = history['asset_class'].astype('category')
 
             # initiate strategy
             self.on_start()
 
             # drip history
-            Garner.drip(history, self._bar_handler)
+            Porter.drip(history, self._bar_handler)
 
     # ---------------------------------------
-    def _get_history(self):
+    def _fetch_csv(self):
         """
         Get bars history from AQTLib-compatible csv file.
 
         """
         dfs = []
         for symbol in self.symbols:
-            file = "{data}/{symbol}.{kind}.csv".format(data=self.data, symbol=symbol, kind="BAR")
+            file = "{data}/{symbol}.{kind}.csv".format(data=self.backtest_csv, symbol=symbol, kind="BAR")
             if not os.path.exists(file):
                 self._logger.error(
                     "Can't load data for {symbol} ({file} doesn't exist)".format(
@@ -198,7 +220,7 @@ class Algo(Object):
                 sys.exit(0)
             try:
                 df = pd.read_csv(file)
-                if not Garner.validate_csv(df, "BAR"):
+                if not Porter.validate_csv(df, "BAR"):
                     self._logger.error("{file} isn't a AQTLib-compatible format".format(file=file))
                     sys.exit(0)
 
@@ -222,12 +244,42 @@ class Algo(Object):
 
         """
         symbol = bar['symbol'].values
+        if len(symbol) == 0:
+            return
+        symbol = symbol[0]
+
+        # self_bars = self.bars.copy()  # work on copy
 
         self.bars = self._update_window(self.bars, bar,
                                         window=self.bars_window)
 
-        instrument = self.get_instrument(symbol)
-        self.on_bar(instrument)
+        # optimize pandas
+        if len(self.bars) == 1:
+            self.bars['symbol'] = self.bars['symbol'].astype('category')
+            self.bars['symbol_group'] = self.bars['symbol_group'].astype('category')
+            self.bars['asset_class'] = self.bars['asset_class'].astype('category')
+
+        # new bar?
+        hash_string = bar[:1]['symbol'].to_string().translate(
+            str.maketrans({key: None for key in "\n -:+"}))
+        this_bar_hash = abs(hash(hash_string)) % (10 ** 8)
+
+        newbar = True
+        if symbol in self.bar_hashes.keys():
+            newbar = self.bar_hashes[symbol] != this_bar_hash
+        self.bar_hashes[symbol] = this_bar_hash
+
+        if newbar:
+            if self.bars[(self.bars['symbol'] == symbol) | (
+                    self.bars['symbol_group'] == symbol)].empty:
+                return
+
+            instrument = self.get_instrument(symbol)
+            if instrument:
+                self.record_ts = bar.index[0]
+                self._logger.debug('BAR TIME: {}'.format(self.record_ts))
+                self.on_bar(instrument)
+                self.record(bar)
 
     # ---------------------------------------
     def _update_window(self, df, data, window=None, resolution=None):
@@ -267,7 +319,7 @@ class Algo(Object):
 
         """
         instrument = Instrument(symbol)
-        instrument._bind_strategy(self)
+        instrument.attach_strategy(self)
 
         return instrument
 
@@ -292,3 +344,108 @@ class Algo(Object):
         """
         # raise NotImplementedError("Should implement on_start()")
         pass
+
+    def order(self, signal, symbol, quantity=0, **kwargs):
+        """ Send an order for the selected instrument
+
+        :Parameters:
+
+            direction : string
+                Order Type (BUY/SELL, EXIT/FLATTEN)
+            symbol : string
+                instrument symbol
+            quantity : int
+                Order quantiry
+
+        :Optional:
+
+            limit_price : float
+                In case of a LIMIT order, this is the LIMIT PRICE
+            expiry : int
+                Cancel this order if not filled after *n* seconds
+                (default 60 seconds)
+            order_type : string
+                Type of order: Market (default),
+                LIMIT (default when limit_price is passed),
+                MODIFY (required passing or orderId)
+            orderId : int
+                If modifying an order, the order id of the modified order
+            target : float
+                Target (exit) price
+            initial_stop : float
+                Price to set hard stop
+            stop_limit: bool
+                Flag to indicate if the stop should be STOP or STOP LIMIT.
+                Default is ``False`` (STOP)
+            trail_stop_at : float
+                Price at which to start trailing the stop
+            trail_stop_type : string
+                Type of traiing stop offset (amount, percent).
+                Default is ``percent``
+            trail_stop_by : float
+                Offset of trailing stop distance from current price
+            fillorkill: bool
+                Fill entire quantiry or none at all
+            iceberg: bool
+                Is this an iceberg (hidden) order
+            tif: str
+                Time in force (DAY, GTC, IOC, GTD). default is ``DAY``
+        """
+        self._logger.debug('ORDER: %s %4d %s %s', signal,
+            quantity, symbol, kwargs)
+
+        position = self.get_positions(symbol)
+        if signal.upper() == "EXIT" or signal.upper() == "FLATTEN":
+            if position['position'] == 0:
+                return
+
+            kwargs['symbol'] = symbol
+            kwargs['quantity'] = abs(position['position'])
+            kwargs['direction'] = "BUY" if position['position'] < 0 else "SELL"
+
+            # print("EXIT", kwargs)
+
+            try:
+                self.record({symbol + '_POSITION': 0})
+            except Exception as e:
+                pass
+
+        else:
+            if quantity == 0:
+                return
+
+            kwargs['symbol'] = symbol
+            kwargs['quantity'] = abs(quantity)
+            kwargs['direction'] = signal.upper()
+
+            # print(signal.upper(), kwargs)
+
+            # record
+            try:
+                quantity = abs(quantity)
+                if kwargs['direction'] != "BUY":
+                    quantity = -quantity
+                self.record({symbol + '_POSITION': quantity + position['position']})
+            except Exception as e:
+                pass
+
+    # ---------------------------------------
+    def record(self, *args, **kwargs):
+        """Records data for later analysis.
+        Values will be logged to the file specified via
+        ``--output [file]`` (along with bar data) as
+        csv/pickle/h5 file.
+
+        Call from within your strategy:
+        ``self.record(key=value)``
+
+        :Parameters:
+            ** kwargs : mixed
+                The names and values to record
+
+        """
+        if self.output:
+            try:
+                self.datastore.record(self.record_ts, *args, **kwargs)
+            except Exception as e:
+                pass
