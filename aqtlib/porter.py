@@ -41,11 +41,11 @@ from aqtlib.schema import metadata, ticks
 from ib_insync import IB, Forex
 
 
-__all__ = ['Garner']
+__all__ = ['Porter']
 
 
-class Garner(Object):
-    """Garner class initilizer
+class Porter(Object):
+    """Porter class initilizer
 
     Args:
         symbols : str
@@ -137,7 +137,7 @@ class Garner(Object):
     # -------------------------------------------
     def load_cli_args(self):
         parser = argparse.ArgumentParser(
-            description='AQTLib Garner',
+            description='AQTLib Porter',
             formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
         parser.add_argument('--ib_port', default=self.ib_port,
@@ -174,7 +174,7 @@ class Garner(Object):
         return util.run(*awaitables, timeout=self.RequestTimeout)
 
     def run(self):
-        """Starts the garner
+        """Starts the Porter
 
         Connects to the TWS/GW, processes and logs market data.
 
@@ -293,11 +293,11 @@ class Garner(Object):
         combined = []
 
         bars_ohlc_dict = {
-            'open':           'first',
-            'high':           'max',
-            'low':            'min',
-            'close':          'last',
-            'volume':         'sum'
+            'open': 'first',
+            'high': 'max',
+            'low': 'min',
+            'close': 'last',
+            'volume': 'sum'
         }
 
         for symbol in meta_data.index.values:
