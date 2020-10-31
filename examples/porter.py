@@ -1,4 +1,3 @@
-# flake8: noqa
 #!/usr/bin/env python3
 #
 # MIT License
@@ -24,24 +23,16 @@
 # SOFTWARE.
 #
 
-import sys
+import logging
 
-# check min, python version
-if sys.version_info < (3, 6, 0):
-    raise RuntimeError('AQTLib requires Python 3.6 or higher')
+from aqtlib.porter import Porter
+from aqtlib.util import logToConsole
 
-from .version import __version__, __version_info__
+class MainPorter(Porter):
+    pass
 
-from .objects import Object
-from .porter import Porter
-from .broker import Broker
-from .algo import Algo
-from .instrument import Instrument
-
-
-__all__ = ['util', 'schema']
-for _m in (
-        objects, porter, algo, instrument, broker):
-    __all__ += _m.__all__
-
-del sys
+# -------------------------------------------
+if __name__ == "__main__":
+    logToConsole(logging.INFO)
+    porter = Porter()
+    porter.run()

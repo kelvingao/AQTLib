@@ -35,7 +35,8 @@ import numpy as np
 from sqlalchemy.engine.url import URL
 
 from typing import List, Awaitable
-from aqtlib import Object, PG, util
+from aqtlib import Object, util
+from apgsa import PG
 from aqtlib.schema import metadata, ticks
 
 from ib_insync import IB, Forex
@@ -84,7 +85,7 @@ class Porter(Object):
         db_pass='aqtlib_pass',
         db_skip=False
     )
-    __slots__ = defaults.keys()
+    # __slots__ = defaults.keys()
 
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
@@ -95,15 +96,8 @@ class Porter(Object):
         # override with (non-default) command-line args
         self.update(**self.load_cli_args())
 
-        # PostgreSQL manager
-        settings = dict(
-            drivername='postgres',
-            database=self.db_name,
-            username=self.db_user,
-            password=self.db_pass,
-            host=self.db_host
-        )
-        self.pg = PG(str(URL(**settings)), metadata)
+        # database manager
+        self.pg = PG()
 
         # sync/async framework for Interactive Brokers
         self.ib = IB()
@@ -170,18 +164,16 @@ class Porter(Object):
             cmd_args).items() if val != parser.get_default(arg)}
         return args
 
-    def _run(self, *awaitables: List[Awaitable]):
-        return util.run(*awaitables, timeout=self.RequestTimeout)
-
     def run(self):
         """Starts the Porter
 
         Connects to the TWS/GW, processes and logs market data.
 
         """
-        # initilize and create PostgreSQL schema tables
-        self._logger.info("Initialize PostgreSQL...")
-        self._run(self.pg.init_pool())
+        # connect to PostgreSQL
+        self.pg.connect(
+            self.db_host, self.db_name, self.db_user, self.db_pass)
+        self._logger.info("PostgreSQL Connected.")
 
         # connect to Interactive Brokers
         # FIXME: if disconnect, try reconnecting
