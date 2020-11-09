@@ -45,7 +45,7 @@ ticks = Table(
     Column('bidSize', INTEGER),
     Column('ask', FLOAT(asdecimal=True)),
     Column('askSize', INTEGER),
-    Column('time', DateTime, nullable=True, index=True)
+    Column('time', DateTime(timezone=True), nullable=True, index=True, unique=True)
 )
 
 trades = Table(
@@ -55,8 +55,8 @@ trades = Table(
     Column('symbol', VARCHAR(12), index=True),
     Column('direction', VARCHAR(5)),
     Column('quantity', INTEGER),
-    Column('entry_time', DateTime, index=True),
-    Column('exit_time', DateTime, index=True),
+    Column('entry_time', DateTime(timezone=True), index=True, unique=True),
+    Column('exit_time', DateTime(timezone=True), index=True, unique=True),
     Column('exit_reason', VARCHAR(8), index=True),
     Column('order_type', VARCHAR(6), index=True),
     Column('market_price', FLOAT(asdecimal=True), index=True),
@@ -70,7 +70,7 @@ trades = Table(
 bars = Table(
     'bars', metadata,
     Column('id', INTEGER, primary_key=True),
-    Column('datetime', DateTime, nullable=False, index=True),
+    Column('datetime', DateTime(timezone=True), nullable=False, index=True, unique=True),
     Column('symbol_id', ForeignKey('symbols.id'), nullable=False, index=True),
     Column('open', FLOAT(asdecimal=True)),
     Column('high', FLOAT(asdecimal=True)),
