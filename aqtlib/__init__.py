@@ -39,7 +39,7 @@ from .algo import Algo
 from .instrument import Instrument
 
 
-__all__ = ['util', 'schema']
+__all__ = ['utils', 'schema']
 for _m in (
         objects, porter, algo, instrument, broker):
     __all__ += _m.__all__

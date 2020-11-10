@@ -13,7 +13,7 @@ from sqlalchemy.engine.url import URL
 from sqlalchemy import select, and_
 from datetime import datetime
 from typing import List, Awaitable
-from aqtlib import Object, util
+from aqtlib import Object, utils
 from apgsa import PG
 from ib_insync import IB, Forex
 
@@ -143,7 +143,7 @@ class Porter(Object):
         return args
 
     def _run(self, *awaitables: Awaitable):
-        return util.run(*awaitables, timeout=self.RequestTimeout)
+        return utils.run(*awaitables, timeout=self.RequestTimeout)
 
     def run(self):
         """Starts the Porter
@@ -162,8 +162,8 @@ class Porter(Object):
 
     async def get_symbol_id_async(self, symbol):
         # start
-        asset_class = util.gen_asset_class(symbol)
-        symbol_group = util.gen_symbol_group(symbol)
+        asset_class = utils.gen_asset_class(symbol)
+        symbol_group = utils.gen_symbol_group(symbol)
         clean_symbol = symbol.replace("_" + asset_class, "")
         expiry = None
 
@@ -201,7 +201,7 @@ class Porter(Object):
 
     async def store_data_async(self, df, kind="BAR"):
         # validate columns
-        valid_cols = util.validate_columns(df, kind)
+        valid_cols = utils.validate_columns(df, kind)
         if not valid_cols:
             raise ValueError('Invalid Column list')
 
@@ -246,7 +246,7 @@ class Porter(Object):
             bars.c.datetime, bars.c.open, bars.c.high, bars.c.low, bars.c.close, bars.c.volume]).where(
                 and_(bars.c.datetime >= start, bars.c.datetime <= end))
 
-        return util.run(self.get_data_async(sql_query))
+        return utils.run(self.get_data_async(sql_query))
 
     # ---------------------------------------------
     @staticmethod
@@ -297,7 +297,7 @@ class Porter(Object):
 
         # jquant's csv?
         if set(df.columns) == set(['close', 'open', 'high', 'low', 'volume', 'money']):
-            df.index = df.index.tz_localize(util.get_timezone()).tz_convert('UTC')
+            df.index = df.index.tz_localize(utils.get_timezone()).tz_convert('UTC')
 
         # FIXME: generate a valid ib tuple
         symbol = instrument[0] + '_' + instrument[1]

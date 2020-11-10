@@ -7,7 +7,7 @@ import argparse
 import pandas as pd
 
 from datetime import datetime
-from aqtlib import util, Broker, Porter
+from aqtlib import utils, Broker, Porter
 from aqtlib.objects import DataStore
 from abc import abstractmethod
 from .instrument import Instrument
@@ -183,7 +183,7 @@ class Algo(Broker):
                     tz=self.timezone
                 )
 
-                history = util.prepare_data(('AAPL', 'STK'), history, index=history.datetime)
+                history = utils.prepare_data(('AAPL', 'STK'), history, index=history.datetime)
 
             # optimize pandas
             if not history.empty:

@@ -27,12 +27,14 @@ import os
 import datetime
 import time
 import asyncio
+import colorlog
 import logging
 import pandas as pd
 
 from dateutil.parser import parse as parse_date
 from dateutil import relativedelta
 from pytz import timezone
+from apgsa import PG
 
 import eventkit as ev
 import numpy as np
@@ -136,19 +138,71 @@ def run(*awaitables, timeout: float = None):
 
     return result
 
-def logToConsole(level=logging.INFO):
-    """Create a log handler that logs to the console."""
-    logger = logging.getLogger()
+
+def patchAsyncio():
+    """Patch asyncio to allow nested event loops."""
+    import nest_asyncio
+    nest_asyncio.apply()
+
+
+def startLoop():
+    """
+    Use nested asyncio event loop for Jupyter notebooks.
+
+    This is not needed anymore in Jupyter versions 5 or higher.
+    """
+    def _ipython_loop_asyncio(kernel):
+        """Use asyncio event loop for the given IPython kernel."""
+        loop = asyncio.get_event_loop()
+
+        def kernel_handler():
+            kernel.do_one_iteration()
+            loop.call_later(kernel._poll_interval, kernel_handler)
+
+        loop.call_soon(kernel_handler)
+        try:
+            if not loop.is_running():
+                loop.run_forever()
+        finally:
+            if not loop.is_running():
+                loop.run_until_complete(loop.shutdown_asyncgens())
+                loop.close()
+
+    patchAsyncio()
+    loop = asyncio.get_event_loop()
+    if not loop.is_running():
+        from ipykernel.eventloops import register_integration, enable_gui
+        register_integration('asyncio')(_ipython_loop_asyncio)
+        enable_gui('asyncio')
+
+
+def logToConsole(level=logging.INFO, color=True):
+    """Create a colorlog handler that logs to the console."""
+    logger = colorlog.getLogger()
     logger.setLevel(level)
-    formatter = logging.Formatter(
-        '%(asctime)s %(name)s [%(levelname)s] %(message)s')
-    handler = logging.StreamHandler()
+
+    if color:
+        formatter = colorlog.ColoredFormatter(
+            '%(bold)s%(log_color)s%(asctime)s [%(levelname)s] %(name)s %(message)s',
+            log_colors={
+                'DEBUG': 'cyan',
+                'INFO': 'green',
+                'WARNING': 'yellow',
+                'ERROR': 'red',
+                'CRITICAL': 'red,bg_white',
+            },)
+        handler = colorlog.StreamHandler()
+    else:
+        formatter = logging.Formatter(
+            '%(asctime)s %(name)s %(levelname)s %(message)s')
+        handler = logging.StreamHandler()
+
     handler.setFormatter(formatter)
+
     logger.handlers = [
         h for h in logger.handlers
-        if type(h) is not logging.StreamHandler]
+        if type(h) is not (colorlog.StreamHandler if color else logging.StreamHandler)]
     logger.addHandler(handler)
-
 
 # ---------------------------------------------
 # data preparation methods

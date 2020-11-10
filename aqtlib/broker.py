@@ -4,7 +4,7 @@ import pandas as pd
 import logging
 
 from aqtlib.objects import Object
-from aqtlib import Porter, util
+from aqtlib import Porter, utils
 
 __all__ = ['Broker']
 
@@ -34,10 +34,10 @@ class Broker(Object):
         instrument_tuples_dict = {}
         for instrument in instruments:
             try:
-                instrument = util.create_ib_tuple(instrument)
-                contractString = util.contractString(instrument)
+                instrument = utils.create_ib_tuple(instrument)
+                contractString = utils.contractString(instrument)
                 instrument_tuples_dict[contractString] = instrument
-                util.createContract(instrument)
+                utils.createContract(instrument)
             except Exception as e:
                 pass
 
