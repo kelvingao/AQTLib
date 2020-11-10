@@ -1,27 +1,4 @@
-#!/usr/bin/env python3
-#
-# MIT License
-#
-# Copyright (c) 2019 Kelvin Gao
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
-#
+"""Algo class definition."""
 
 import os
 import sys
@@ -66,6 +43,7 @@ class Algo(Broker):
     """
 
     defaults = dict(
+        instruments=[],
         resolution="1D",
         bars_window=120,
         timezone='UTC',
@@ -107,6 +85,8 @@ class Algo(Broker):
         self.signals = {}
         for sym in self.symbols:
             self.signals[sym] = pd.DataFrame()
+
+        self.initialize()
 
     # ---------------------------------------
     def _check_backtest_args(self):
@@ -175,7 +155,7 @@ class Algo(Broker):
 
         if self.backtest:
             self._logger.info('Algo start backtesting...')
-            # get history from csv dir
+            # history from csv dir
             if self.backtest_csv:
                 dfs = self._fetch_csv()
 
@@ -189,17 +169,27 @@ class Algo(Broker):
                 history = history[(history.index >= self.start) & (history.index <= self.end)]
 
             else:
-                # TODO - history from porter
-                pass
+                # history from porter
+                import nest_asyncio
+                nest_asyncio.apply()
+
+                # connect to database
+                self.porter.connect_sql()
+                history = self.porter.get_history(
+                    symbols=self.symbols,
+                    start=self.start,
+                    end=self.end if self.end else datetime.now(),
+                    resolution=self.resolution,
+                    tz=self.timezone
+                )
+
+                history = util.prepare_data(('AAPL', 'STK'), history, index=history.datetime)
 
             # optimize pandas
             if not history.empty:
                 history['symbol'] = history['symbol'].astype('category')
                 history['symbol_group'] = history['symbol_group'].astype('category')
                 history['asset_class'] = history['asset_class'].astype('category')
-
-            # initiate strategy
-            self.on_start()
 
             # drip history
             Porter.drip(history, self._bar_handler)
@@ -336,13 +326,13 @@ class Algo(Broker):
 
     # ---------------------------------------
     @abstractmethod
-    def on_start(self):
+    def initialize(self):
         """
         Invoked once when algo starts. Used for when the strategy
         needs to initialize parameters upon starting.
 
         """
-        # raise NotImplementedError("Should implement on_start()")
+        # raise NotImplementedError("Should implement initialize()")
         pass
 
     def order(self, signal, symbol, quantity=0, **kwargs):

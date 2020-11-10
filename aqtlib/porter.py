@@ -1,27 +1,4 @@
-#!/usr/bin/env python3
-#
-# MIT License
-#
-# Copyright (c) 2019 Kelvin Gao
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
-#
+"""Porter class definition."""
 
 import os
 import sys
@@ -33,13 +10,14 @@ import pandas as pd
 import numpy as np
 
 from sqlalchemy.engine.url import URL
-
+from sqlalchemy import select, and_
+from datetime import datetime
 from typing import List, Awaitable
 from aqtlib import Object, util
 from apgsa import PG
-from aqtlib.schema import metadata, ticks
-
 from ib_insync import IB, Forex
+
+from .schema import metadata, symbols, bars, ticks
 
 
 __all__ = ['Porter']
@@ -164,38 +142,111 @@ class Porter(Object):
             cmd_args).items() if val != parser.get_default(arg)}
         return args
 
+    def _run(self, *awaitables: Awaitable):
+        return util.run(*awaitables, timeout=self.RequestTimeout)
+
     def run(self):
         """Starts the Porter
 
         Connects to the TWS/GW, processes and logs market data.
 
         """
+
+        self._loop.run_forever()
+
+    def connect_sql(self):
         # connect to PostgreSQL
         self.pg.connect(
             self.db_host, self.db_name, self.db_user, self.db_pass)
-        self._logger.info("PostgreSQL Connected.")
+        self._logger.info("PostgreSQL {}:{} Connected.".format(self.db_host, self.db_port))
 
-        # connect to Interactive Brokers
-        # FIXME: if disconnect, try reconnecting
-        self._logger.info("Connecting to Interactive Brokers...")
-        self.ib.connect(
-            self.ib_server, self.ib_port, self.ib_client)
-        self._logger.info("Connection established.")
+    async def get_symbol_id_async(self, symbol):
+        # start
+        asset_class = util.gen_asset_class(symbol)
+        symbol_group = util.gen_symbol_group(symbol)
+        clean_symbol = symbol.replace("_" + asset_class, "")
+        expiry = None
 
-        try:
-            contract = Forex('EURUSD')
-            if contract and self.ib.qualifyContracts(contract):
-                tickerInfo = self.ib.reqMktData(contract, '', False, False, None)
-                self._logger.info('{} requested...'.format(tickerInfo))
+        async def querySymbolIdAsync(asset_class, symbol_group, clean_symbol):
+            sql = select([symbols]).where(and_(
+                symbols.c.symbol == clean_symbol,
+                symbols.c.symbol_group == symbol_group,
+                symbols.c.asset_class == asset_class)
+            )
 
-        except (KeyboardInterrupt, SystemExit):
-            self.quitting = True  # don't display connection errors on ctrl+c
-            print(
-                "\n\n>>> Interrupted with Ctrl-c...\n\n")
-            # FIXME: quit gracefully
-            sys.exit(1)
+            return await self.pg.fetchrow(sql)
 
-        self._loop.run_forever()
+        # symbol already in db
+        row = await querySymbolIdAsync(asset_class, symbol_group, clean_symbol)
+        if row is not None:
+            return row[0]
+
+        # symbol/expiry not in db... insert new/update expiry
+        else:
+            # need to update the expiry?
+            # TODO: add expiry
+
+            # insert new symbol
+            data = {
+                'symbol': clean_symbol,
+                'symbol_group': symbol_group,
+                'asset_class': asset_class,
+                'expiry': expiry
+            }
+            sql = symbols.insert([data])
+            await self.pg.execute(sql)
+
+            row = await querySymbolIdAsync(asset_class, symbol_group, clean_symbol)
+            return row[0]
+
+    async def store_data_async(self, df, kind="BAR"):
+        # validate columns
+        valid_cols = util.validate_columns(df, kind)
+        if not valid_cols:
+            raise ValueError('Invalid Column list')
+
+        # loop through symbols and save in db
+        for symbol in list(df['symbol'].unique()):
+            data = df[df['symbol'] == symbol]
+            symbol_id = await self.get_symbol_id_async(symbol)
+
+            # prepare columns for insert
+            data.loc[:, 'datetime'] = data.index
+            data.loc[:, 'symbol_id'] = symbol_id
+            data = data.drop(['symbol', 'symbol_group', 'asset_class', 'expiry'], axis=1)
+
+            # insert row by row to handle greeks
+            data = data.to_dict(orient="records")
+
+            if kind == "BAR":
+                for _, row in enumerate(data):
+                    sql = bars.insert().values([row])
+                    await self.pg.execute(sql)
+            else:
+                pass
+
+        return True
+
+    # -------------------------------------------
+    async def get_data_async(self, sql) -> pd.DataFrame:
+        # async with self.pg.pool.acquire() as conn:
+        # stmt = await conn.prepare(sql)
+        data = await self.pg.fetch(sql)
+        if not data:
+            return pd.DataFrame()
+
+        columns = [k for k in data[0].keys()]
+        return pd.DataFrame(data, columns=columns)
+
+    def get_history(self, symbols, start, end=None, resolution="1T", tz="UTC", continuous=True):
+        if end is None:
+            end = datetime.now()
+
+        sql_query = select([
+            bars.c.datetime, bars.c.open, bars.c.high, bars.c.low, bars.c.close, bars.c.volume]).where(
+                and_(bars.c.datetime >= start, bars.c.datetime <= end))
+
+        return util.run(self.get_data_async(sql_query))
 
     # ---------------------------------------------
     @staticmethod

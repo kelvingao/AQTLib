@@ -1,45 +1,36 @@
-
-#!/usr/bin/env python3
-#
-# MIT License
-#
-# Copyright (c) 2019 Kelvin Gao
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
-#
+"""Broker class definition."""
 
 import pandas as pd
 import logging
 
 from aqtlib.objects import Object
-from aqtlib import util
+from aqtlib import Porter, util
 
 __all__ = ['Broker']
 
 
 class Broker(Object):
+    defaults = dict(
+        instruments=None,
+        ibclient=998,
+        ibport=4002,
+        ibserver='localhost'
+    )
+
     def __init__(self, instruments, *args, **kwargs):
         super(Broker, self).__init__(instruments, *args, **kwargs)
-
         self._logger = logging.getLogger(__name__)
-        # -----------------------------------
-        # create contracts
+
+        self.porter = Porter()
+
+    @property
+    def instruments(self):
+        # print("Getting instruments...")
+        return self._instruments
+
+    @instruments.setter
+    def instruments(self, instruments):
+        # print("Setting instruments: {}".format(instruments))
         instrument_tuples_dict = {}
         for instrument in instruments:
             try:
@@ -50,7 +41,7 @@ class Broker(Object):
             except Exception as e:
                 pass
 
-        self.instruments = instrument_tuples_dict
+        self._instruments = instrument_tuples_dict
         self.symbols = list(self.instruments.keys())
 
     # ---------------------------------------
