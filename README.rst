@@ -1,5 +1,8 @@
-AQTLib, Pythonic Algorithmic Trading
-=================================================
+|Docs|
+
+Introduction
+============
+
 AQTLib (Asynchronous Quantitative Trading Library) is an event-driven algorithmic trading library written in Python,
 that supports backtesting, as well as live trading via Interactive Brokers.
 
@@ -15,3 +18,8 @@ Requirements
 .. _IB-insync: https://github.com/erdewit/ib_insync
 .. _TWS: https://www.interactivebrokers.com/en/index.php?f=15875
 .. _IB Gateway: https://www.interactivebrokers.com/en/index.php?f=16457
+
+
+.. |Docs| image:: https://readthedocs.org/projects/aqtlib/badge/?version=latest
+   :alt: Documentation Status
+   :target: https://aqtlib.readthedocs.io/en/latest/?badge=latest

@@ -1,20 +1,10 @@
-.. AQTLib documentation master file, created by
-   sphinx-quickstart on Mon Nov  9 16:05:46 2020.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
-
-Welcome to AQTLib's documentation!
-==================================
+Contents
+========
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
 
+   readme
+   api
 
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+.. include:: ../README.rst
