@@ -1,8 +1,8 @@
 """init schema tables
 
-Revision ID: e196eced6b26
+Revision ID: 4591dee5c8d6
 Revises: 
-Create Date: 2020-11-04 23:30:06.813668
+Create Date: 2020-11-18 16:29:10.619479
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'e196eced6b26'
+revision = '4591dee5c8d6'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -28,6 +28,7 @@ def upgrade():
     )
     op.create_index(op.f('ix_symbols_asset_class'), 'symbols', ['asset_class'], unique=False)
     op.create_index(op.f('ix_symbols_expiry'), 'symbols', ['expiry'], unique=False)
+    op.create_index(op.f('ix_symbols_symbol'), 'symbols', ['symbol'], unique=False)
     op.create_index(op.f('ix_symbols_symbol_group'), 'symbols', ['symbol_group'], unique=False)
     op.create_table('trades',
     sa.Column('id', sa.INTEGER(), nullable=False),
@@ -45,14 +46,15 @@ def upgrade():
     sa.Column('entry_price', sa.FLOAT(asdecimal=True), nullable=True),
     sa.Column('exit_price', sa.FLOAT(asdecimal=True), nullable=True),
     sa.Column('realized_pnl', sa.FLOAT(asdecimal=True), nullable=True),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('algo', 'symbol', 'entry_time')
     )
     op.create_index(op.f('ix_trades_algo'), 'trades', ['algo'], unique=False)
     op.create_index(op.f('ix_trades_entry_price'), 'trades', ['entry_price'], unique=False)
-    op.create_index(op.f('ix_trades_entry_time'), 'trades', ['entry_time'], unique=True)
+    op.create_index(op.f('ix_trades_entry_time'), 'trades', ['entry_time'], unique=False)
     op.create_index(op.f('ix_trades_exit_price'), 'trades', ['exit_price'], unique=False)
     op.create_index(op.f('ix_trades_exit_reason'), 'trades', ['exit_reason'], unique=False)
-    op.create_index(op.f('ix_trades_exit_time'), 'trades', ['exit_time'], unique=True)
+    op.create_index(op.f('ix_trades_exit_time'), 'trades', ['exit_time'], unique=False)
     op.create_index(op.f('ix_trades_market_price'), 'trades', ['market_price'], unique=False)
     op.create_index(op.f('ix_trades_order_type'), 'trades', ['order_type'], unique=False)
     op.create_index(op.f('ix_trades_symbol'), 'trades', ['symbol'], unique=False)
@@ -66,23 +68,27 @@ def upgrade():
     sa.Column('close', sa.FLOAT(asdecimal=True), nullable=True),
     sa.Column('volume', sa.INTEGER(), nullable=True),
     sa.ForeignKeyConstraint(['symbol_id'], ['symbols.id'], ),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('datetime', 'symbol_id')
     )
-    op.create_index(op.f('ix_bars_datetime'), 'bars', ['datetime'], unique=True)
+    op.create_index(op.f('ix_bars_datetime'), 'bars', ['datetime'], unique=False)
     op.create_index(op.f('ix_bars_symbol_id'), 'bars', ['symbol_id'], unique=False)
     op.create_table('ticks',
     sa.Column('id', sa.INTEGER(), nullable=False),
-    sa.Column('symbol_id', sa.SMALLINT(), nullable=True),
+    sa.Column('symbol_id', sa.SMALLINT(), nullable=False),
     sa.Column('bid', sa.FLOAT(asdecimal=True), nullable=True),
-    sa.Column('bidSize', sa.INTEGER(), nullable=True),
+    sa.Column('bidsize', sa.INTEGER(), nullable=True),
     sa.Column('ask', sa.FLOAT(asdecimal=True), nullable=True),
-    sa.Column('askSize', sa.INTEGER(), nullable=True),
-    sa.Column('time', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('asksize', sa.INTEGER(), nullable=True),
+    sa.Column('last', sa.FLOAT(asdecimal=True), nullable=True),
+    sa.Column('lastsize', sa.INTEGER(), nullable=True),
+    sa.Column('datetime', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['symbol_id'], ['symbols.id'], ),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('datetime', 'symbol_id')
     )
+    op.create_index(op.f('ix_ticks_datetime'), 'ticks', ['datetime'], unique=False)
     op.create_index(op.f('ix_ticks_symbol_id'), 'ticks', ['symbol_id'], unique=False)
-    op.create_index(op.f('ix_ticks_time'), 'ticks', ['time'], unique=True)
     op.create_table('greeks',
     sa.Column('id', sa.INTEGER(), nullable=False),
     sa.Column('tick_id', sa.INTEGER(), nullable=True),
@@ -111,8 +117,8 @@ def downgrade():
     op.drop_index(op.f('ix_greeks_tick_id'), table_name='greeks')
     op.drop_index(op.f('ix_greeks_bar_id'), table_name='greeks')
     op.drop_table('greeks')
-    op.drop_index(op.f('ix_ticks_time'), table_name='ticks')
     op.drop_index(op.f('ix_ticks_symbol_id'), table_name='ticks')
+    op.drop_index(op.f('ix_ticks_datetime'), table_name='ticks')
     op.drop_table('ticks')
     op.drop_index(op.f('ix_bars_symbol_id'), table_name='bars')
     op.drop_index(op.f('ix_bars_datetime'), table_name='bars')
@@ -128,6 +134,7 @@ def downgrade():
     op.drop_index(op.f('ix_trades_algo'), table_name='trades')
     op.drop_table('trades')
     op.drop_index(op.f('ix_symbols_symbol_group'), table_name='symbols')
+    op.drop_index(op.f('ix_symbols_symbol'), table_name='symbols')
     op.drop_index(op.f('ix_symbols_expiry'), table_name='symbols')
     op.drop_index(op.f('ix_symbols_asset_class'), table_name='symbols')
     op.drop_table('symbols')
